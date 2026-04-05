@@ -103,8 +103,6 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    memset(file_info, 0, sizeof(read_response_t));
-
     if (read_file(command->slot, curr_file) < 0) {
         print_error("Failed to read file");
         return -1;
@@ -116,10 +114,27 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    memcpy(file_info->name, &curr_file->name, strlen(curr_file->name));
-    memcpy(file_info->contents, &curr_file->contents, curr_file->contents_len);
+    /* Build read_response_t in-place from the shared union buffer.
+     *
+     * file_t layout in union:  [in_use:4][gid:2][name:32][len:2][contents:8192]
+     * read_response_t layout:  [name:32]                 [contents:8192]
+     * Byte offsets:
+     *   file.name     = union[6..37]   resp.name     = union[0..31]
+     *   file.contents = union[40..]    resp.contents = union[32..]
+     *
+     * Both copies have src/dst overlap, so memmove is required.
+     * Save contents_len first because the name memmove writes union[6..31]
+     * which does NOT reach union[38], so contents_len is still valid after
+     * the name move — but save it anyway for clarity and safety. */
+    uint16_t contents_len = curr_file->contents_len;
 
-    pkt_len_t length = MAX_NAME_SIZE + curr_file->contents_len;
+    /* 1. Move name: union[6..37] → union[0..31] (overlap: dst<src, memmove safe) */
+    memmove(file_info->name, curr_file->name, MAX_NAME_SIZE);
+
+    /* 2. Move contents: union[40..] → union[32..] (overlap by 8 bytes, memmove safe) */
+    memmove(file_info->contents, curr_file->contents, contents_len);
+
+    pkt_len_t length = MAX_NAME_SIZE + contents_len;
     write_packet(CONTROL_INTERFACE, READ_MSG, file_info, length);
     return 0;
 }
