@@ -198,6 +198,21 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t));
     print_debug("Receive: waiting for response\n");
 
+    /* Wait for the engineer's response header with a bounded timeout.
+     * At 32MHz (~20 cycles/iteration), 5M iterations ≈ 3 seconds.
+     * Without this, the board blocks forever if the engineer never responds,
+     * hanging all subsequent commands on the CONTROL_INTERFACE. */
+    {
+        uint32_t wait;
+        for (wait = 0; wait < 5000000UL; wait++) {
+            if (uart_has_data(TRANSFER_INTERFACE)) break;
+        }
+        if (wait >= 5000000UL) {
+            print_error("Transfer timeout — no response from engineer\n");
+            return -1;
+        }
+    }
+
     len_recv_msg = 0xffff;
 
     read_packet(TRANSFER_INTERFACE, &cmd, recv_resp, &len_recv_msg);
@@ -271,6 +286,21 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     memset(uart_buf, 0, sizeof(uart_buf));
     print_debug("Listen: waiting on UART1\n");
+
+    /* Bounded wait for the transfer command with timeout (~3 seconds).
+     * Prevents listen() from blocking forever if no transfer arrives. */
+    {
+        uint32_t wait;
+        for (wait = 0; wait < 5000000UL; wait++) {
+            if (uart_has_data(TRANSFER_INTERFACE)) break;
+        }
+        if (wait >= 5000000UL) {
+            print_error("Listen timeout — no transfer command received\n");
+            write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+            return -1;
+        }
+    }
+
     read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length);
     print_debug("Listen: got packet\n");
 

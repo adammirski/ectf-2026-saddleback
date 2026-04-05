@@ -48,4 +48,11 @@ int uart_readbyte(int uart_id);
 */
 void uart_writebyte(int uart_id, uint8_t data);
 
+/** @brief Check if UART has data available without blocking.
+ *
+ *  @param uart_id The index of UART to use
+ *  @return true if at least one byte is available, false if RX FIFO empty.
+*/
+bool uart_has_data(int uart_id);
+
 #endif // __SIMPLE_UART__

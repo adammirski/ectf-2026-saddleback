@@ -49,3 +49,12 @@ void uart_writebyte(int uart_id, uint8_t data) {
     DL_UART_transmitDataBlocking(get_uart_handle(uart_id), data);
 }
 
+/** @brief Check if UART has data available without blocking.
+ *
+ *  @param uart_id The index of UART to use
+ *  @return true if RX FIFO is not empty.
+*/
+bool uart_has_data(int uart_id) {
+    return !DL_UART_Main_isRXFIFOEmpty(get_uart_handle(uart_id));
+}
+
