@@ -1,0 +1,15 @@
+# Competition secrets — never commit
+global.secrets
+*.hsm/
+
+# Generated at build time by secrets_to_c_header.py
+firmware/inc/secrets.h
+
+# Build artifacts
+firmware/build/
+__pycache__/
+*.pyc
+*.pyo
+
+# Session notes (internal)
+session_*.md
