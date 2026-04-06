@@ -288,7 +288,11 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
      * if no transfer command arrives.  Return LISTEN_MSG to host so the
      * test framework is not left waiting indefinitely. */
     if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) < 0) {
-        print_error("Listen: UART1 timeout\n");
+        /* Use print_debug (not print_error) here: print_error sends ERROR_MSG which
+         * causes Python to raise HSMError and stop reading.  The subsequent
+         * LISTEN_MSG would then go unread, leaving orphaned bytes in Python's
+         * receive buffer that corrupt the next test's ACK exchange. */
+        print_debug("Listen: UART1 timeout\n");
         write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
         return -1;
     }
