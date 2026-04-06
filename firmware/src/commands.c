@@ -207,7 +207,10 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     len_recv_msg = 0xffff;
 
-    read_packet(TRANSFER_INTERFACE, &cmd, recv_resp, &len_recv_msg);
+    if (read_packet(TRANSFER_INTERFACE, &cmd, recv_resp, &len_recv_msg) < 0) {
+        print_error("UART1 timeout waiting for file\n");
+        return -1;
+    }
     if (cmd != RECEIVE_MSG) {
         print_error("Opcode mismatch");
         return -1;
@@ -309,43 +312,39 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
-            print_debug("Listen: reading file\n");
             /* Read the requested file */
             if (read_file(command->slot, &recv_resp->file) < 0) {
-                print_error("Failed to read file");
+                /* Send error over TRANSFER first, then unblock test framework */
                 write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Read failed", 11);
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
-            print_debug("Listen: checking perms\n");
             /* Check that the requester has receive permission for this
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
-                print_debug("Listen: perm denied — sending error\n");
                 write_packet(TRANSFER_INTERFACE, ERROR_MSG, "No permission", 13);
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
-            print_debug("Listen: perm OK — getting metadata\n");
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
-                print_error("Getting metadata failed");
                 write_packet(TRANSFER_INTERFACE, ERROR_MSG, "No metadata", 11);
+                write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
             memcpy(&recv_resp->uuid, &metadata->uuid, UUID_SIZE);
 
-            print_debug("Listen: sending response\n");
             /* MAC is verified by the receiver locally — not transmitted */
             write_length = sizeof(receive_response_t);
             write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, recv_resp, write_length);
-            print_debug("Listen: response sent\n");
             break;
         }
         default:
-            print_error("Bad message type");
+            write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
             return -1;
     }
 
