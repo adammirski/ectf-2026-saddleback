@@ -32,12 +32,29 @@ UART_Regs *get_uart_handle(int uart_id) {
 
 /** @brief Reads the next available character from UART.
  *
+ *  For CONTROL_INTERFACE (UART0): blocks indefinitely (host always responds).
+ *  For TRANSFER_INTERFACE (UART1): polls with a timeout of ~2 seconds at
+ *  32 MHz (≈ 2 000 000 iterations × ~32 cycles each).  Returns -1 on timeout
+ *  so callers can unblock without hanging the board.
+ *
  *  @param uart_id The index of UART to use
- *  @return The character read.
+ *  @return The byte read as an unsigned value (0-255), or -1 on timeout.
 */
-int uart_readbyte(int uart_id){
-    uint8_t data = DL_UART_receiveDataBlocking(get_uart_handle(uart_id));
-    return data;
+int uart_readbyte(int uart_id) {
+    UART_Regs *uart = get_uart_handle(uart_id);
+    if (uart_id == TRANSFER_INTERFACE) {
+        /* Non-blocking poll with timeout for board-to-board UART.
+         * Without this the board hangs forever when the other side
+         * never responds (e.g. engineer not in listen mode), making
+         * every subsequent CONTROL_INTERFACE command also time out. */
+        for (uint32_t i = 2000000UL; i > 0; i--) {
+            if (!DL_UART_Main_isRXFIFOEmpty(uart)) {
+                return (int)(uint8_t)DL_UART_Main_receiveData(uart);
+            }
+        }
+        return -1;  /* timeout — let callers handle it */
+    }
+    return (int)(uint8_t)DL_UART_receiveDataBlocking(uart);
 }
 
 /** @brief Writes a byte to UART.

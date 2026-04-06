@@ -43,27 +43,37 @@ int read_bytes(int uart_id, void *buf, uint16_t len) {
 
 /** @brief Read a msg header from UART.
  *
+ *  Returns MSG_OK on success.  Returns the negative uart_readbyte error code
+ *  (e.g. -1 on UART1 timeout) so callers can unblock without hanging.
+ *
  *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
 */
-void read_header(int uart_id, msg_header_t *hdr) {
-    hdr->magic = uart_readbyte(uart_id);
-    // Any bytes until '%' will be read, but ignored.
-    // Once we receive a '%', continue with processing the rest of the message.
+int read_header(int uart_id, msg_header_t *hdr) {
+    int b;
+    /* Scan for magic byte, propagating any timeout error immediately */
+    b = uart_readbyte(uart_id);
+    if (b < 0) return b;
+    hdr->magic = (char)b;
     while (hdr->magic != MSG_MAGIC) {
-        hdr->magic = uart_readbyte(uart_id);
+        b = uart_readbyte(uart_id);
+        if (b < 0) return b;
+        hdr->magic = (char)b;
     }
-    hdr->cmd = uart_readbyte(uart_id);
-    read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
+    b = uart_readbyte(uart_id);
+    if (b < 0) return b;
+    hdr->cmd = (char)b;
+    return read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
 }
 
 /** @brief Receive an ACK from UART.
  *
- *  @return MSG_OK on success. A negative value on error.
+ *  @return MSG_OK on success. Negative on UART error/timeout. MSG_NO_ACK
+ *          if a non-ACK message was received.
 */
 int read_ack(int uart_id) {
     msg_header_t ack_buf = {0};
-
-    read_header(uart_id, &ack_buf);
+    int ret = read_header(uart_id, &ack_buf);
+    if (ret < 0) return ret;  /* propagate timeout */
     if (ack_buf.cmd == ACK_MSG) {
         return MSG_OK;
     } else {
@@ -191,7 +201,10 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
         return MSG_BAD_PTR;
     }
 
-    read_header(uart_id, &header);
+    {
+        int ret = read_header(uart_id, &header);
+        if (ret < 0) return ret;  /* propagate UART1 timeout */
+    }
 
     *cmd = header.cmd;
 

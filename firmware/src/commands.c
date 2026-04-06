@@ -195,23 +195,15 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     memcpy(&request->permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
 
     print_debug("Receive: sending request over UART1\n");
-    write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t));
-    print_debug("Receive: waiting for response\n");
-
-    /* Wait for the engineer's response header with a bounded timeout.
-     * At 32MHz (~20 cycles/iteration), 5M iterations ≈ 3 seconds.
-     * Without this, the board blocks forever if the engineer never responds,
-     * hanging all subsequent commands on the CONTROL_INTERFACE. */
-    {
-        uint32_t wait;
-        for (wait = 0; wait < 5000000UL; wait++) {
-            if (uart_has_data(TRANSFER_INTERFACE)) break;
-        }
-        if (wait >= 5000000UL) {
-            print_error("Transfer timeout — no response from engineer\n");
-            return -1;
-        }
+    /* write_packet internally calls read_ack(TRANSFER_INTERFACE).
+     * If engineer never ACKs (not in listen mode, or no wire), uart_readbyte
+     * now returns -1 after ~2s, read_ack propagates it, and write_packet
+     * returns MSG_NO_ACK.  Without this check the board would hang forever. */
+    if (write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t)) != MSG_OK) {
+        print_error("No response on UART1 — engineer not ready\n");
+        return -1;
     }
+    print_debug("Receive: waiting for response\n");
 
     len_recv_msg = 0xffff;
 
@@ -286,22 +278,14 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
     memset(uart_buf, 0, sizeof(uart_buf));
     print_debug("Listen: waiting on UART1\n");
-
-    /* Bounded wait for the transfer command with timeout (~3 seconds).
-     * Prevents listen() from blocking forever if no transfer arrives. */
-    {
-        uint32_t wait;
-        for (wait = 0; wait < 5000000UL; wait++) {
-            if (uart_has_data(TRANSFER_INTERFACE)) break;
-        }
-        if (wait >= 5000000UL) {
-            print_error("Listen timeout — no transfer command received\n");
-            write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
-            return -1;
-        }
+    /* read_packet(TRANSFER_INTERFACE) will timeout after ~2s via uart_readbyte
+     * if no transfer command arrives.  Return LISTEN_MSG to host so the
+     * test framework is not left waiting indefinitely. */
+    if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) < 0) {
+        print_error("Listen: UART1 timeout\n");
+        write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
+        return -1;
     }
-
-    read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length);
     print_debug("Listen: got packet\n");
 
     switch (cmd) {
