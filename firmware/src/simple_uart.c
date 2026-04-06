@@ -47,7 +47,7 @@ int uart_readbyte(int uart_id) {
          * Without this the board hangs forever when the other side
          * never responds (e.g. engineer not in listen mode), making
          * every subsequent CONTROL_INTERFACE command also time out. */
-        for (uint32_t i = 2000000UL; i > 0; i--) {
+        for (uint32_t i = 12000000UL; i > 0; i--) {
             if (!DL_UART_Main_isRXFIFOEmpty(uart)) {
                 return (int)(uint8_t)DL_UART_Main_receiveData(uart);
             }

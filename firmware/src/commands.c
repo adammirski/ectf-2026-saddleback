@@ -248,9 +248,12 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     memset(file_list, 0, sizeof(*file_list));
 
     /* Send our permissions so the other HSM can filter the response (SR1) */
-    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG,
-                 (void *)&global_permissions,
-                 sizeof(group_permission_t) * MAX_PERMS);
+    if (write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG,
+                     (void *)&global_permissions,
+                     sizeof(group_permission_t) * MAX_PERMS) != MSG_OK) {
+        print_error("No response on UART1 — engineer not ready\n");
+        return -1;
+    }
 
     len_recv_msg = 0xffff;
 
