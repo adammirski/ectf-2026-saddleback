@@ -162,8 +162,11 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
 
     result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
 
-    // ACKs don't need a response
-    if (type == ACK_MSG) {
+    /* ACKs and ERRORs don't need a response.
+     * ERROR_MSG bodies are always empty (print_error sends text via DEBUG first);
+     * skipping read_ack prevents the board from consuming the next command's
+     * header bytes as a fake ACK when Python sends the ERROR ACK slightly late. */
+    if (type == ACK_MSG || type == ERROR_MSG) {
         return result;
     }
 
@@ -201,10 +204,14 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
         return MSG_BAD_PTR;
     }
 
-    {
+    /* Loop to skip spurious ACK packets.  When write_packet(ERROR_MSG) returns
+     * without reading the host's ACK, that ACK arrives in the RX FIFO before
+     * the next real command.  Silently consuming it here keeps the protocol
+     * in sync without deadlocking. */
+    do {
         int ret = read_header(uart_id, &header);
         if (ret < 0) return ret;  /* propagate UART1 timeout */
-    }
+    } while (header.cmd == ACK_MSG);
 
     *cmd = header.cmd;
 
@@ -217,17 +224,15 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
         *len = header.len;
     }
 
-    if (header.cmd != ACK_MSG) {
-        write_ack(uart_id);  // ACK the header
-        if (header.len && buf != NULL) {
-            if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
-                return MSG_NO_ACK;
-            }
+    write_ack(uart_id);  // ACK the header
+    if (header.len && buf != NULL) {
+        if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
+            return MSG_NO_ACK;
         }
-        if (header.len) {
-            if (write_ack(uart_id) != MSG_OK) { // ACK the final block (not handled by read_bytes)
-                return MSG_NO_ACK;
-            }
+    }
+    if (header.len) {
+        if (write_ack(uart_id) != MSG_OK) { // ACK the final block (not handled by read_bytes)
+            return MSG_NO_ACK;
         }
     }
     return MSG_OK;
