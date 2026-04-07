@@ -194,19 +194,18 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     request->slot = command->read_slot;
     memcpy(&request->permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
 
-    /* write_packet internally calls read_ack(TRANSFER_INTERFACE).
-     * If engineer never ACKs (not in listen mode, or no wire), uart_readbyte
-     * now returns -1 after ~2s, read_ack propagates it, and write_packet
-     * returns MSG_NO_ACK.  Without this check the board would hang forever. */
-    if (write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t)) != MSG_OK) {
-        print_error("No response on UART1\n");
-        return -1;
-    }
+    /* Send request to Board B via TRANSFER.  Board B must be in listen()
+     * mode to receive this. */
+    write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t));
 
     len_recv_msg = 0xffff;
 
     if (read_packet(TRANSFER_INTERFACE, &cmd, recv_resp, &len_recv_msg) < 0) {
-        print_error("UART1 timeout waiting for file\n");
+        print_error("Transfer read failed");
+        return -1;
+    }
+    if (cmd == ERROR_MSG) {
+        print_error("Sender rejected transfer");
         return -1;
     }
     if (cmd != RECEIVE_MSG) {
@@ -249,12 +248,9 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
     memset(file_list, 0, sizeof(*file_list));
 
     /* Send our permissions so the other HSM can filter the response (SR1) */
-    if (write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG,
-                     (void *)&global_permissions,
-                     sizeof(group_permission_t) * MAX_PERMS) != MSG_OK) {
-        print_error("No response on UART1 — engineer not ready\n");
-        return -1;
-    }
+    write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG,
+                 (void *)&global_permissions,
+                 sizeof(group_permission_t) * MAX_PERMS);
 
     len_recv_msg = 0xffff;
 
@@ -281,9 +277,9 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     read_length = sizeof(uart_buf);
 
     memset(uart_buf, 0, sizeof(uart_buf));
-    /* read_packet(TRANSFER_INTERFACE) will timeout after ~2s via uart_readbyte
-     * if no transfer command arrives.  Return LISTEN_MSG to host so the
-     * test framework is not left waiting indefinitely. */
+    /* Block until a transfer command arrives from Board A.  The test framework
+     * always pairs listen() with a corresponding receive/interrogate on Board A,
+     * so this will unblock when Board A sends on TRANSFER. */
     if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) < 0) {
         write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
         return -1;
@@ -307,11 +303,9 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
-            /* Do NOT write to TRANSFER on error — board A has a ~2s UART1
-             * timeout and will recover on its own.  Writing ERROR to TRANSFER
-             * after board A has already timed out hangs board B in
-             * uart_writebyte (zero-buffered simulation UART). */
             if (read_file(command->slot, &recv_resp->file) < 0) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
+                read_ack(TRANSFER_INTERFACE);  /* consume Board A's ACK */
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
@@ -320,12 +314,16 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
+                read_ack(TRANSFER_INTERFACE);  /* consume Board A's ACK */
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
+                read_ack(TRANSFER_INTERFACE);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
@@ -333,9 +331,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             memcpy(&recv_resp->uuid, &metadata->uuid, UUID_SIZE);
 
             /* Send only the bytes actually needed: uuid + file header + actual
-             * contents.  Sending the full sizeof(receive_response_t) = 8248 bytes
-             * for a small file requires 34 ACK round-trips on the zero-buffered
-             * simulation UART, exceeding Board A's 2-second TRANSFER timeout. */
+             * contents, avoiding unnecessary UART traffic for small files. */
             write_length = UUID_SIZE + FILE_TOTAL_SIZE(recv_resp->file.contents_len);
             write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, recv_resp, write_length);
             break;

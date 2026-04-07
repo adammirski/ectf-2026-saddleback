@@ -41,16 +41,12 @@
 */
 int uart_readbyte(int uart_id);
 
-/** @brief Writes a byte to UART.
- *
- *  For TRANSFER_INTERFACE: polls with timeout (same as read).
- *  For CONTROL_INTERFACE: blocks indefinitely.
+/** @brief Writes a byte to UART (blocking).
  *
  *  @param uart_id The index of UART to use
  *  @param data The byte to be written.
- *  @return 0 on success, -1 on timeout (TRANSFER only).
 */
-int uart_writebyte(int uart_id, uint8_t data);
+void uart_writebyte(int uart_id, uint8_t data);
 
 /** @brief Check if UART has data available without blocking.
  *

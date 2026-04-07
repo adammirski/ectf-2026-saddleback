@@ -97,9 +97,7 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack) {
                 return MSG_NO_ACK;
             }
         }
-        if (uart_writebyte(uart_id, ((uint8_t *)buf)[i]) < 0) {
-            return MSG_NO_ACK;  /* write timeout (TRANSFER) */
-        }
+        uart_writebyte(uart_id, ((uint8_t *)buf)[i]);
     }
 
     fflush(stdout);
