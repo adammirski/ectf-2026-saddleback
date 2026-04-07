@@ -316,22 +316,30 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
+            print_debug("Listen: got RECEIVE\n");
+
             /* Do NOT write to TRANSFER on error — board A has a ~2s UART1
              * timeout and will recover on its own.  Writing ERROR to TRANSFER
              * after board A has already timed out hangs board B in
              * uart_writebyte (zero-buffered simulation UART). */
             if (read_file(command->slot, &recv_resp->file) < 0) {
+                print_debug("Listen: read_file failed\n");
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
+
+            print_debug("Listen: file read OK\n");
 
             /* Check that the requester has receive permission for this
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
+                print_debug("Listen: perm check failed\n");
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
+
+            print_debug("Listen: perm OK, sending\n");
 
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
