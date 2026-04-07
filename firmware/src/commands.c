@@ -194,16 +194,14 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     request->slot = command->read_slot;
     memcpy(&request->permissions, &global_permissions, sizeof(group_permission_t) * MAX_PERMS);
 
-    print_debug("Receive: sending request over UART1\n");
     /* write_packet internally calls read_ack(TRANSFER_INTERFACE).
      * If engineer never ACKs (not in listen mode, or no wire), uart_readbyte
      * now returns -1 after ~2s, read_ack propagates it, and write_packet
      * returns MSG_NO_ACK.  Without this check the board would hang forever. */
     if (write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)request, sizeof(receive_request_t)) != MSG_OK) {
-        print_error("No response on UART1 — engineer not ready\n");
+        print_error("No response on UART1\n");
         return -1;
     }
-    print_debug("Receive: waiting for response\n");
 
     len_recv_msg = 0xffff;
 
@@ -283,20 +281,13 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     read_length = sizeof(uart_buf);
 
     memset(uart_buf, 0, sizeof(uart_buf));
-    print_debug("Listen: waiting on UART1\n");
     /* read_packet(TRANSFER_INTERFACE) will timeout after ~2s via uart_readbyte
      * if no transfer command arrives.  Return LISTEN_MSG to host so the
      * test framework is not left waiting indefinitely. */
     if (read_packet(TRANSFER_INTERFACE, &cmd, uart_buf, &read_length) < 0) {
-        /* Use print_debug (not print_error) here: print_error sends ERROR_MSG which
-         * causes Python to raise HSMError and stop reading.  The subsequent
-         * LISTEN_MSG would then go unread, leaving orphaned bytes in Python's
-         * receive buffer that corrupt the next test's ACK exchange. */
-        print_debug("Listen: UART1 timeout\n");
         write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
         return -1;
     }
-    print_debug("Listen: got packet\n");
 
     switch (cmd) {
         case INTERROGATE_MSG: {
@@ -316,30 +307,22 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
-            print_debug("Listen: got RECEIVE\n");
-
             /* Do NOT write to TRANSFER on error — board A has a ~2s UART1
              * timeout and will recover on its own.  Writing ERROR to TRANSFER
              * after board A has already timed out hangs board B in
              * uart_writebyte (zero-buffered simulation UART). */
             if (read_file(command->slot, &recv_resp->file) < 0) {
-                print_debug("Listen: read_file failed\n");
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
-
-            print_debug("Listen: file read OK\n");
 
             /* Check that the requester has receive permission for this
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
-                print_debug("Listen: perm check failed\n");
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
-
-            print_debug("Listen: perm OK, sending\n");
 
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
