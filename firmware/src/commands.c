@@ -341,8 +341,11 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
             memcpy(&recv_resp->uuid, &metadata->uuid, UUID_SIZE);
 
-            /* MAC is verified by the receiver locally — not transmitted */
-            write_length = sizeof(receive_response_t);
+            /* Send only the bytes actually needed: uuid + file header + actual
+             * contents.  Sending the full sizeof(receive_response_t) = 8248 bytes
+             * for a small file requires 34 ACK round-trips on the zero-buffered
+             * simulation UART, exceeding Board A's 2-second TRANSFER timeout. */
+            write_length = UUID_SIZE + FILE_TOTAL_SIZE(recv_resp->file.contents_len);
             write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, recv_resp, write_length);
             break;
         }

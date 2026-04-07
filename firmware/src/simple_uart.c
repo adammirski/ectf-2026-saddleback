@@ -59,11 +59,30 @@ int uart_readbyte(int uart_id) {
 
 /** @brief Writes a byte to UART.
  *
+ *  For TRANSFER_INTERFACE: polls with timeout (~2s at 32 MHz) so the board
+ *  doesn't hang permanently when the other side has stopped reading.
+ *  For CONTROL_INTERFACE: blocks indefinitely (host always reads).
+ *
  *  @param uart_id The index of UART to use
  *  @param data The byte to be written.
+ *  @return 0 on success, -1 on timeout (TRANSFER only).
 */
-void uart_writebyte(int uart_id, uint8_t data) {
-    DL_UART_transmitDataBlocking(get_uart_handle(uart_id), data);
+int uart_writebyte(int uart_id, uint8_t data) {
+    UART_Regs *uart = get_uart_handle(uart_id);
+    if (uart_id == TRANSFER_INTERFACE) {
+        /* Poll with timeout — symmetric with uart_readbyte timeout.
+         * DL_UART_transmitDataBlocking just spins on isBusy/isTXFIFOFull
+         * then calls transmitData; we replicate that with a timeout. */
+        for (uint32_t i = 12000000UL; i > 0; i--) {
+            if (!DL_UART_isBusy(uart)) {
+                DL_UART_transmitDataBlocking(uart, data);
+                return 0;
+            }
+        }
+        return -1;  /* timeout — other board stopped reading */
+    }
+    DL_UART_transmitDataBlocking(uart, data);
+    return 0;
 }
 
 /** @brief Check if UART has data available without blocking.
