@@ -316,18 +316,11 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
-            /* On any error below we send ERROR_MSG on TRANSFER_INTERFACE
-             * so board A can unblock from its read_packet(TRANSFER).
-             *
-             * After sending ERROR, board A's read_packet ACKs the header
-             * with write_ack(TRANSFER).  In the simulation's zero-buffered
-             * UART, that ACK blocks unless someone is reading from TRANSFER.
-             * So we MUST consume board A's ACK with read_ack(TRANSFER)
-             * before returning, otherwise board A hangs in write_ack and
-             * every subsequent CONTROL command to board A times out. */
+            /* Do NOT write to TRANSFER on error — board A has a ~2s UART1
+             * timeout and will recover on its own.  Writing ERROR to TRANSFER
+             * after board A has already timed out hangs board B in
+             * uart_writebyte (zero-buffered simulation UART). */
             if (read_file(command->slot, &recv_resp->file) < 0) {
-                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
-                read_ack(TRANSFER_INTERFACE);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
@@ -336,16 +329,12 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
-                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
-                read_ack(TRANSFER_INTERFACE);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
-                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
-                read_ack(TRANSFER_INTERFACE);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
