@@ -316,15 +316,17 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
         case RECEIVE_MSG: {
             command = (receive_request_t *)uart_buf;
 
-            /* Read the requested file.
-             * NOTE: On error we send LISTEN_MSG to CONTROL to unblock the
-             * test framework, but we do NOT respond on TRANSFER_INTERFACE.
-             * Sending ERROR_MSG on TRANSFER before the attacker enters
-             * read_packet causes a UART1 ACK race (both sides spin in the
-             * 12M-iteration timeout loop simultaneously and miss each other).
-             * The attacker will timeout and report failure — that is correct
-             * behaviour for a missing/unauthorized file. */
+            /* On any error below we send ERROR_MSG on TRANSFER_INTERFACE
+             * FIRST so board A can unblock from its read_packet(TRANSFER)
+             * immediately.  Without this, board A blocks indefinitely in
+             * uart_readbyte(TRANSFER) when the simulation's UART1 does not
+             * time out on its own, cascading the failure to every subsequent
+             * test.  ERROR_MSG skips read_ack in write_packet, so it is safe
+             * to send even when board A is still waiting for the header ACK.
+             * Board A's read_packet do-while loop skips the trailing ACK that
+             * board A sends back; board B has already returned by then. */
             if (read_file(command->slot, &recv_resp->file) < 0) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
@@ -333,12 +335,14 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
              * file's group (SR1) */
             if (!validate_receive_permission(command->permissions,
                                              recv_resp->file.group_id)) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
 
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
+                write_packet(TRANSFER_INTERFACE, ERROR_MSG, NULL, 0);
                 write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
                 return -1;
             }
