@@ -24,8 +24,6 @@ static bool constant_time_compare(const void *a, const void *b, size_t len) {
 }
 
 bool check_pin(unsigned char *pin) {
-    print_debug("Checking PIN\n");
-
     /* Compare provided PIN against stored PIN using constant-time comparison
      * to prevent timing attacks from leaking PIN information (SR2) */
     if (!constant_time_compare(pin, HSM_PIN, PIN_LENGTH)) {
@@ -35,12 +33,6 @@ bool check_pin(unsigned char *pin) {
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
-    static char output_buf[128];
-
-    output_buf[0] = '\0';
-    sprintf(output_buf, "Checking %c permissions for group: %hx\n", perm, group_id);
-    print_debug(output_buf);
-
     /* Search through global_permissions for this group_id (SR1) */
     for (int i = 0; i < MAX_PERMS; i++) {
         if (global_permissions[i].group_id == group_id) {

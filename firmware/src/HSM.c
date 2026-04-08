@@ -141,8 +141,6 @@ int main(void) {
 
     // process commands forever
     while (1) {
-        print_debug("Ready\n");
-
         STATUS_LED_ON();
 
         pkt_len = 0;
@@ -173,17 +171,6 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-
-#ifdef CRYPTO_EXAMPLE
-            // Run the crypto example
-            // TODO: Remove this from your design
-            crypto_example();
-#endif // CRYPTO_EXAMPLE
-
-            // Print the boot flag
-            // TODO: Remove this from your design
-            boot_flag();
-
             STATUS_LED_OFF();
             list(pkt_len, uart_buf);
             break;
