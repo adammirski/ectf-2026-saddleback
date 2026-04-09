@@ -12,26 +12,39 @@
  */
 #include "security.h"
 #include "host_messaging.h"
+#include "secrets.h"
+#include <string.h>
 
 bool check_pin(unsigned char *pin) {
-    print_debug("Checking PIN\n");
-
-    // TODO: the reference design doesn't implement *ANY* security.
-    // This function currently does nothing. Your team should add the
-    // appropriate security checks here to implement the security
-    // requirements.
+    if (memcmp(pin, HSM_PIN, PIN_LENGTH) != 0) {
+        return false;
+    }
     return true;
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
-    char output_buf[128] = {0};
+    for (int i = 0; i < MAX_PERMS; i++) {
+        if (global_permissions[i].group_id == group_id) {
+            switch (perm) {
+                case PERM_READ:    return global_permissions[i].read;
+                case PERM_WRITE:   return global_permissions[i].write;
+                case PERM_RECEIVE: return global_permissions[i].receive;
+                default: return false;
+            }
+        }
+    }
+    return false;
+}
 
-    sprintf(output_buf, "Checking %c permissions for group: %hx\n", perm, group_id);
-    print_debug(output_buf);
+bool validate_receive_permission(group_permission_t *perms, uint16_t group_id) {
+    for (int i = 0; i < MAX_PERMS; i++) {
+        if (perms[i].group_id == group_id && perms[i].receive) {
+            return true;
+        }
+    }
+    return false;
+}
 
-    // TODO: the reference design doesn't implement *ANY* security.
-    // This function currently does nothing. Your team should add the
-    // appropriate security checks here to implement the security
-    // requirements.
-    return true;
+bool validate_interrogate_permission(group_permission_t *perms, uint16_t group_id) {
+    return validate_receive_permission(perms, group_id);
 }

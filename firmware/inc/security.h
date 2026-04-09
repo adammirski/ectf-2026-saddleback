@@ -49,4 +49,22 @@ bool check_pin(unsigned char *pin);
 */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
 
+/** @brief Validate that a requester's permissions allow receiving files of a given group
+ *
+ *  @param perms The requester's permission array
+ *  @param group_id The group ID of the file being requested
+ *
+ *  @return True if the requester has receive permission for this group
+*/
+bool validate_receive_permission(group_permission_t *perms, uint16_t group_id);
+
+/** @brief Validate that a requester has receive permission for a given group (for interrogate filtering)
+ *
+ *  @param perms The requester's permission array
+ *  @param group_id The group ID to check
+ *
+ *  @return True if the requester can receive files from this group
+*/
+bool validate_interrogate_permission(group_permission_t *perms, uint16_t group_id);
+
 #endif  // __SECURITY_H__
