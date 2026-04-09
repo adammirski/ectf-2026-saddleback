@@ -32,34 +32,20 @@ UART_Regs *get_uart_handle(int uart_id) {
 
 /** @brief Reads the next available character from UART.
  *
- *  Blocks until a byte is available on either interface.
- *  The original MITRE reference design uses blocking reads on BOTH UARTs.
- *  A polling timeout on TRANSFER prevents the simulation from context-
- *  switching to the other board, causing the 2-second timeout to fire
- *  before the other board can respond.
- *
  *  @param uart_id The index of UART to use
- *  @return The byte read as an unsigned value (0-255).
+ *  @return The character read.
 */
-int uart_readbyte(int uart_id) {
-    return (int)(uint8_t)DL_UART_receiveDataBlocking(get_uart_handle(uart_id));
+int uart_readbyte(int uart_id){
+    uint8_t data = DL_UART_receiveDataBlocking(get_uart_handle(uart_id));
+    return data;
 }
 
-/** @brief Writes a byte to UART (blocking).
+/** @brief Writes a byte to UART.
  *
  *  @param uart_id The index of UART to use
  *  @param data The byte to be written.
 */
 void uart_writebyte(int uart_id, uint8_t data) {
     DL_UART_transmitDataBlocking(get_uart_handle(uart_id), data);
-}
-
-/** @brief Check if UART has data available without blocking.
- *
- *  @param uart_id The index of UART to use
- *  @return true if RX FIFO is not empty.
-*/
-bool uart_has_data(int uart_id) {
-    return !DL_UART_Main_isRXFIFOEmpty(get_uart_handle(uart_id));
 }
 

@@ -82,13 +82,9 @@ int flash_simple_write(uint32_t address, void* buffer, uint32_t size) {
     // it also expects it to be an even number
     size_32b = (size_32b % 2 == 0) ? size_32b : size_32b + 1;
 
-    /* Static buffer instead of VLA — the MSPM0L2228 has only 256 bytes of stack.
-     * Max flash write is FILE_TOTAL_SIZE(MAX_CONTENTS_SIZE) = 8232 bytes =
-     * 2058 uint32_t words (already even).  Flash writes are never re-entrant
-     * (single-threaded firmware), so a static buffer is safe. */
-#define FLASH_WRITE_BUF_WORDS 2058
-    static uint32_t write_data[FLASH_WRITE_BUF_WORDS];
-    memset(write_data, 0xff, size_32b * 4);
+    // write the data into a correctly sized region to ensure no undefined behavior
+    uint32_t write_data[size_32b];
+    memset(write_data, 0xff, size_32b*4);
     memcpy(write_data, buffer, size);
 
     // if memory section is corrected, make sure to write the ECC (you have been warned)

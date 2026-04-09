@@ -42,18 +42,8 @@ int init_fs() {
  * @return True if the slot is in use. False otherwise.
 */
 bool is_slot_in_use(slot_t slot) {
-    /* Read only the 4-byte in_use field from flash — avoids putting an 8228-byte
-     * file_t on the 256-byte stack (which would immediately overflow).
-     * Guard against uninitialized FAT entries (flash-erased = 0xFFFFFFFF or 0). */
-    unsigned int flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
-    uint32_t in_use_val;
-    /* Valid file addresses span [FILES_START_ADDR, FILES_START_ADDR + STORED_FILE_SIZE*(MAX_FILE_COUNT-1)] */
-    if (flash_addr < FILES_START_ADDR ||
-        flash_addr > FILES_START_ADDR + (unsigned int)STORED_FILE_SIZE * (MAX_FILE_COUNT - 1)) {
-        return false;
-    }
-    flash_simple_read(flash_addr, &in_use_val, sizeof(uint32_t));
-    return in_use_val == FILE_IN_USE;
+    file_t temp_file;
+    return (!read_file(slot, &temp_file) && temp_file.in_use == FILE_IN_USE);
 }
 
 /** @brief Create a new file object in memory
