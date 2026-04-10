@@ -49,4 +49,13 @@ bool check_pin(unsigned char *pin);
 */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
 
+/** @brief Check whether a requester's permission array grants receive on a group
+ *
+ *  @param perms Pointer to the requester's MAX_PERMS-long permission array
+ *  @param group_id The file's group ID
+ *
+ *  @return True if perms contains group_id with receive=true
+*/
+bool requester_can_receive(const group_permission_t *perms, uint16_t group_id);
+
 #endif  // __SECURITY_H__

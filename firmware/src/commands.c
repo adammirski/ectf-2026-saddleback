@@ -290,13 +290,16 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             // get the request
             command = (receive_request_t *)uart_buf;
 
-            // TODO: the reference design does not implement *ANY* security
-            // you will want to add something here to comply with SR1
-
             // if this read fails, the other device will not receive a response and
             // may need to be reset before further testing can occur
             if (read_file(command->slot, &recv_resp.file) < 0) {
                 print_error("Failed to read file");
+                return -1;
+            }
+
+            // SR1: verify the requester has receive permission for this group
+            if (!requester_can_receive(command->permissions, recv_resp.file.group_id)) {
+                print_error("Requester lacks receive permission");
                 return -1;
             }
 
