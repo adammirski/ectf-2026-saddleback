@@ -89,15 +89,8 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len);
 */
 int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len);
 
-/* print_error: send message text as DEBUG (no ACK required from host), then
- * signal failure with a zero-body ERROR_MSG.  Sending the text as the ERROR
- * body caused a UART0 deadlock: Python raises HSMError before sending the
- * body ACK, so the board's read_ack() consumes the *next* command header as
- * a fake ACK, and both sides end up waiting for each other indefinitely. */
-#define print_error(msg) do { \
-    write_packet(CONTROL_INTERFACE, DEBUG_MSG, msg, strlen(msg)); \
-    write_packet(CONTROL_INTERFACE, ERROR_MSG, NULL, 0); \
-} while (0)
+// Macro definitions to print the specified format for error messages
+#define print_error(msg) write_packet(CONTROL_INTERFACE, ERROR_MSG, msg, strlen(msg))
 
 // Macro definitions to print the specified format for debug messages
 #define print_debug(msg) write_packet(CONTROL_INTERFACE, DEBUG_MSG, msg, strlen(msg))

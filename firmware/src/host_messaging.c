@@ -43,37 +43,27 @@ int read_bytes(int uart_id, void *buf, uint16_t len) {
 
 /** @brief Read a msg header from UART.
  *
- *  Returns MSG_OK on success.  Returns the negative uart_readbyte error code
- *  (e.g. -1 on UART1 timeout) so callers can unblock without hanging.
- *
  *  @param hdr Pointer to a buffer where the incoming bytes should be stored.
 */
-int read_header(int uart_id, msg_header_t *hdr) {
-    int b;
-    /* Scan for magic byte, propagating any timeout error immediately */
-    b = uart_readbyte(uart_id);
-    if (b < 0) return b;
-    hdr->magic = (char)b;
+void read_header(int uart_id, msg_header_t *hdr) {
+    hdr->magic = uart_readbyte(uart_id);
+    // Any bytes until '%' will be read, but ignored.
+    // Once we receive a '%', continue with processing the rest of the message.
     while (hdr->magic != MSG_MAGIC) {
-        b = uart_readbyte(uart_id);
-        if (b < 0) return b;
-        hdr->magic = (char)b;
+        hdr->magic = uart_readbyte(uart_id);
     }
-    b = uart_readbyte(uart_id);
-    if (b < 0) return b;
-    hdr->cmd = (char)b;
-    return read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
+    hdr->cmd = uart_readbyte(uart_id);
+    read_bytes(uart_id, &hdr->len, sizeof(hdr->len));
 }
 
 /** @brief Receive an ACK from UART.
  *
- *  @return MSG_OK on success. Negative on UART error/timeout. MSG_NO_ACK
- *          if a non-ACK message was received.
+ *  @return MSG_OK on success. A negative value on error.
 */
 int read_ack(int uart_id) {
     msg_header_t ack_buf = {0};
-    int ret = read_header(uart_id, &ack_buf);
-    if (ret < 0) return ret;  /* propagate timeout */
+
+    read_header(uart_id, &ack_buf);
     if (ack_buf.cmd == ACK_MSG) {
         return MSG_OK;
     } else {
@@ -162,11 +152,8 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
 
     result = write_bytes(uart_id, &hdr, MSG_HEADER_SIZE, false);
 
-    /* ACKs and ERRORs don't need a response.
-     * ERROR_MSG bodies are always empty (print_error sends text via DEBUG first);
-     * skipping read_ack prevents the board from consuming the next command's
-     * header bytes as a fake ACK when Python sends the ERROR ACK slightly late. */
-    if (type == ACK_MSG || type == ERROR_MSG) {
+    // ACKs don't need a response
+    if (type == ACK_MSG) {
         return result;
     }
 
@@ -204,14 +191,7 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
         return MSG_BAD_PTR;
     }
 
-    /* Loop to skip spurious ACK packets.  When write_packet(ERROR_MSG) returns
-     * without reading the host's ACK, that ACK arrives in the RX FIFO before
-     * the next real command.  Silently consuming it here keeps the protocol
-     * in sync without deadlocking. */
-    do {
-        int ret = read_header(uart_id, &header);
-        if (ret < 0) return ret;  /* propagate UART1 timeout */
-    } while (header.cmd == ACK_MSG);
+    read_header(uart_id, &header);
 
     *cmd = header.cmd;
 
@@ -224,15 +204,17 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
         *len = header.len;
     }
 
-    write_ack(uart_id);  // ACK the header
-    if (header.len && buf != NULL) {
-        if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
-            return MSG_NO_ACK;
+    if (header.cmd != ACK_MSG) {
+        write_ack(uart_id);  // ACK the header
+        if (header.len && buf != NULL) {
+            if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
+                return MSG_NO_ACK;
+            }
         }
-    }
-    if (header.len) {
-        if (write_ack(uart_id) != MSG_OK) { // ACK the final block (not handled by read_bytes)
-            return MSG_NO_ACK;
+        if (header.len) {
+            if (write_ack(uart_id) != MSG_OK) { // ACK the final block (not handled by read_bytes)
+                return MSG_NO_ACK;
+            }
         }
     }
     return MSG_OK;
