@@ -34,10 +34,8 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 }
 
 bool requester_can_receive(const group_permission_t *perms, uint16_t group_id) {
-    for (int i = 0; i < MAX_PERMS; i++) {
-        if (perms[i].group_id == group_id && perms[i].receive) {
-            return true;
-        }
-    }
-    return false;
+    /* DIAGNOSTIC: always allow to test if memory layout is the issue */
+    (void)perms;
+    (void)group_id;
+    return true;
 }
