@@ -14,6 +14,7 @@
 #include "host_messaging.h"
 #include "secrets.h"
 #include <string.h>
+#include <stddef.h>
 
 bool check_pin(unsigned char *pin) {
     return memcmp(pin, HSM_PIN, PIN_LENGTH) == 0;
@@ -36,12 +37,14 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 bool requester_can_receive(const group_permission_t *perms, uint16_t group_id) {
     /* `perms` points into a #pragma pack(1) struct, so each element may sit
      * on an odd address. Cortex-M0+ faults on unaligned halfword loads, so
-     * copy each entry into an aligned local before reading group_id. */
+     * access each field via byte pointers rather than struct member reads.
+     * Keep this function's own stack usage at zero — listen() is already
+     * way over the 256-byte stack limit with its recv_resp local. */
     const uint8_t *src = (const uint8_t *)perms;
-    group_permission_t entry;
     for (int i = 0; i < MAX_PERMS; i++) {
-        memcpy(&entry, src + i * sizeof(group_permission_t), sizeof(entry));
-        if (entry.group_id == group_id && entry.receive) {
+        const uint8_t *e = src + i * sizeof(group_permission_t);
+        uint16_t gid = (uint16_t)e[0] | ((uint16_t)e[1] << 8);
+        if (gid == group_id && e[offsetof(group_permission_t, receive)]) {
             return true;
         }
     }
