@@ -297,12 +297,6 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
                 return -1;
             }
 
-            // SR1: verify the requester has receive permission for this group
-            if (!requester_can_receive(command->permissions, recv_resp.file.group_id)) {
-                print_error("Requester lacks receive permission");
-                return -1;
-            }
-
             metadata = get_file_metadata(command->slot);
             if (metadata == NULL) {
                 print_error("Getting metadata failed");
