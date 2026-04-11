@@ -34,8 +34,16 @@ bool validate_permission(uint16_t group_id, permission_enum_t perm) {
 }
 
 bool requester_can_receive(const group_permission_t *perms, uint16_t group_id) {
-    /* DIAGNOSTIC: always allow to test if memory layout is the issue */
-    (void)perms;
-    (void)group_id;
-    return true;
+    /* `perms` points into a #pragma pack(1) struct, so each element may sit
+     * on an odd address. Cortex-M0+ faults on unaligned halfword loads, so
+     * copy each entry into an aligned local before reading group_id. */
+    const uint8_t *src = (const uint8_t *)perms;
+    group_permission_t entry;
+    for (int i = 0; i < MAX_PERMS; i++) {
+        memcpy(&entry, src + i * sizeof(group_permission_t), sizeof(entry));
+        if (entry.group_id == group_id && entry.receive) {
+            return true;
+        }
+    }
+    return false;
 }
